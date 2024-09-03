@@ -76,9 +76,9 @@ def build(extracted_data):
                                 "pulseID": "123e4567-e89b-12d3-a456-426614174000",
                                 "operator1": "Jane Doe",
                                 "operator2": "John Smith",
-                                "pulseStart": "2024-09-03T10:00:00Z",
+                                "pulseStart": datetime.now().isoformat(),
                                 "pulseDuration": 300,
-                                "dataCaptureStart": "2024-09-03T09:59:55Z",
+                                "dataCaptureStart": datetime.now().isoformat(),
                                 "pulseQuality": "Success",
                                 "currentHeatingInformation": {},
                                 "coolantInformation": {
