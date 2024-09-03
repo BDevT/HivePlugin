@@ -7,34 +7,106 @@ def extract(raw_data):
     """Extract data from the input raw data."""
     p = re.compile("#.*Diagnostics$")
     ep = re.compile("#.*Thermocouples.*")
+    nep = re.compile("#.*Campaign Description.*")
+    to_start_from = 0
+    to_stop_on = 0
+    dictionary_to_be_converted = {}
+    dictionary_to_be_converted_for_thermocouple = {}
+    sub_fields_of_thermocouple = []
 
-    start_index = 0
-    end_index = 0
-
-    extracted_data = {}
-
-    for index, line in enumerate(raw_data):
-        if p.match(line) and start_index == 0:
-            start_index = index + 4
-        elif ep.match(line):
-            end_index = index
+    # Find the start index for the diagnostics data
+    for index, d in enumerate(raw_data):
+        found = p.match(d)
+        if found:
+            to_start_from = index + 4
             break
 
-    if start_index == 0:
-        return None
+    # Find the stop index for the diagnostics data
+    for index, d in enumerate(raw_data):
+        end_found = ep.match(d)
+        if end_found:
+            to_stop_on = index
+            break
 
-    for line in raw_data[start_index:end_index]:
-        line = line.strip()
-        if line:
-            key, value = line.split(":", 1)
-            key = key.strip()
-            value = value.strip()
-            if " x " in value:
-                e1, e2 = value.split(" x ")
-                e2 = e2.split()[0]
-                extracted_data[key] = [e1.strip(), e2.strip()]
-            else:
-                extracted_data[key] = value
+    # Find the stop index for the Thermocouple data
+    for index, d in enumerate(raw_data):
+        end_found_thermocouple = nep.match(d)
+        if end_found_thermocouple:
+            to_stop_on_for_thermocouple = index
+            break
+
+    # Check if a valid start index was found for Diagnostics
+    if to_start_from == 0:
+        print("No Matching Data Found for Diagnostics Block")
+    else:
+        print(
+            "****************** Started scanning for Diagnostics **********************"
+        )
+        print(f"Our Data scanning has to be start from: {to_start_from}")
+        print(f"Our Data scanning has to be stop on: {to_stop_on}")
+
+        # Extract key-value pairs from the specified lines
+        for i in range(to_start_from, to_stop_on):
+            if len(raw_data[i].strip()) > 0:
+                key, value = raw_data[i].strip().split(":")
+                if " x " in value:
+                    e1, e2 = (
+                        value.split(" x ")[0],
+                        value.split(" x ")[1].split(" ")[0],
+                    )
+                    dictionary_to_be_converted[key] = [e1, e2]
+                else:
+                    dictionary_to_be_converted[key] = value
+
+    # Check if a valid start index was found for Thermocouple
+    if to_stop_on == 0:
+        print("No Matching data for Thermocouple Block")
+    else:
+        print(
+            "****************** Started scanning for Thermocouple **********************"
+        )
+        print(f"Our Data scanning has to be start from: {to_stop_on + 4}")
+        print(f"Our Data scanning has to be stop on: {to_stop_on_for_thermocouple}")
+
+        try:
+            for i in range(to_stop_on + 2, to_stop_on_for_thermocouple):
+                if raw_data[i].startswith("#"):
+                    sub_fields_of_thermocouple.append(i)
+            sub_fields_of_thermocouple.append(to_stop_on_for_thermocouple)
+
+            # Extract key-value pairs from the specified lines
+            for driver in range(len(sub_fields_of_thermocouple) - 1):
+                temp = dict()
+                for i in range(
+                    sub_fields_of_thermocouple[driver] + 1,
+                    sub_fields_of_thermocouple[driver + 1],
+                ):
+                    if len(raw_data[i].strip()) > 0:
+                        key, value = raw_data[i].strip().split(":")[:2]
+                        if "[" in value and "]" in value:
+                            mid_value = re.sub(
+                                r"[^0-9.,]",
+                                "",
+                                value.split("=")[1].strip().split("mm")[0],
+                            )
+                            c1, c2, c3 = mid_value.split(",")
+                            temp[key] = [c1, c2, c3]
+                        else:
+                            temp[key] = value
+                dictionary_to_be_converted_for_thermocouple[
+                    raw_data[sub_fields_of_thermocouple[driver]]
+                    .strip()
+                    .replace("#", "")
+                    .replace(" ", "")
+                ] = temp
+        except Exception as e:
+            print("Error: ", str(e))
+    # Generating expected result
+    
+    extracted_data = {
+        "diagnostics_properties": dictionary_to_be_converted,
+        "thermocouple_properties": dictionary_to_be_converted_for_thermocouple,
+    }
 
     return extracted_data
 
