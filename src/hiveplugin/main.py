@@ -3,7 +3,7 @@ import argparse
 import json
 from dotenv import dotenv_values
 import requests
-from .hive_extract import run_extraction
+#from .hive_extract import run_extraction
 
 def load_env(env_file):
     """Load configuration from the specified .env file and merge with environment variables."""
@@ -83,18 +83,43 @@ def send_data_to_metacat(config, access_token, data):
         print(f"Error sending data to Metacat: {str(e)}")
         return None
 
+def load_json_to_dict(file_path):
+    """
+    This function reads a JSON file and returns its content as a dictionary.
+
+    :param file_path: The path to the JSON file.
+    :return: A dictionary containing the JSON data.
+    """
+    print(file_path)
+    try:
+        with open(file_path, 'r') as file:
+            data = json.load(file)
+        return data
+    except FileNotFoundError:
+        print(f"Error: The file {file_path} was not found.")
+    except json.JSONDecodeError:
+        print(f"Error: The file {file_path} contains invalid JSON.")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+
+
 def main():
     args = parse_arguments()
     env = load_env(args.config)
     config = PluginConfig(env, args.input, args.output, args.schema)
 
-    # Extract data
-    try:
-        data = run_extraction(config.input_file, config.output_file, config.schema)
-        print(f"Data extracted from {args.input}")
-    except Exception as e:
-        print(f"Error during extraction: {str(e)}")
-        return
+    # data from JSON file
+    file = 'hiveExample.json'
+    data = load_json_to_dict(file)
+    print(data)
+
+    # Extract data (remove this code)
+    # try:
+    #     data = run_extraction(config.input_file, config.output_file, config.schema)
+    #     print(f"Data extracted from {args.input}")
+    # except Exception as e:
+    #     print(f"Error during extraction: {str(e)}")
+    #     return
     
     # Send data
     access_token = connect_to_keycloak(config)
