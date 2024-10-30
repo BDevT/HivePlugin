@@ -27,7 +27,6 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Process data using configuration from a .env file")
     parser.add_argument("--config", default="hive_plugin.env", help="Path to the .env file (default: hive_plugin.env)")
     parser.add_argument("--input", required=True, help="Path to the input file")
-    parser.add_argument("--output", default="output.json", help="Path to the output file (default: output.json)")
     parser.add_argument("--schema", default="hiveschema", help="Schema name for Metacat (default: hiveschema)")
     
     try:
@@ -37,7 +36,7 @@ def parse_arguments():
         raise
 
 class PluginConfig:
-    def __init__(self, env, input_file, output_file, schema):
+    def __init__(self, env, input_file, schema):
         """
         Initialize PluginConfig with required parameters.
 
@@ -54,7 +53,6 @@ class PluginConfig:
         self.keycloak_password = env.get('KEYCLOAK_PASSWORD')
         self.metacat_url = env.get('METACAT_URL')
         self.input_file = input_file
-        self.output_file = output_file
         self.schema = schema
 
 def connect_to_keycloak(config):
@@ -82,7 +80,7 @@ def connect_to_keycloak(config):
     try:
         response = requests.post(config.keycloak_token_url, data=data)
         response.raise_for_status()
-        return response.json()['access_token']
+        return response.json()['access_token'] #refresh token for 30 mins
         #return response.json().get('access_token')
     except requests.RequestException as e:
         print(f"Error connecting to Keycloak: {e}")
@@ -111,9 +109,10 @@ def send_data_to_metacat(config, access_token, data):
     }
 
     try:
-        response = requests.post(f"{config.metacat_url}/api/v1/dataset", json=data, headers=headers, params=params)
+        response = requests.post(f"{config.metacat_url}/api/v1/datasets", json=data, headers=headers, params=params)
         response.raise_for_status()
         print("Data successfully sent to Metacat.")
+        print(response)
         return response.json()
     except requests.RequestException as e:
         print(f"Error sending data to Metacat: {str(e)}")
@@ -145,7 +144,7 @@ def main():
     try:
         args = parse_arguments()
         env = load_env(args.config)
-        config = PluginConfig(env, args.input, args.output, args.schema)
+        config = PluginConfig(env, args.input, args.schema)
 
         data = load_json_to_dict(config.input_file)
         if data is None:
@@ -163,4 +162,5 @@ def main():
         raise
 
 if __name__ == "__main__":
+    #python3 main.py --config <path_to_config_file> --input <path_to_input_file> 
     main()
