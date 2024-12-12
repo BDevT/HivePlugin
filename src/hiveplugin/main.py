@@ -2,6 +2,7 @@ import os
 import argparse
 import json
 import requests
+import time
 from dotenv import dotenv_values
 
 def load_env(env_file):
@@ -57,17 +58,17 @@ class PluginConfig:
 
 def connect_to_keycloak(config):
     """
-    Connect to Keycloak and retrieve an access token.
+    Connect to Keycloak and retrieve an access and refresh token.
 
     :param config: PluginConfig object with Keycloak settings
-    :return: Access token or None on failure
+    :return: Tuple of access token and refresh token, or (None, None) on failure
     """
     required_vars = ['keycloak_token_url', 'keycloak_client_id', 'keycloak_client_secret', 'keycloak_username', 'keycloak_password']
     missing_vars = [var for var in required_vars if not getattr(config, var)]
 
     if missing_vars:
         print(f"Missing required Keycloak environment variables: {', '.join(missing_vars)}")
-        return None
+        return None, None
 
     data = {
         'grant_type': 'password',
@@ -80,11 +81,37 @@ def connect_to_keycloak(config):
     try:
         response = requests.post(config.keycloak_token_url, data=data)
         response.raise_for_status()
-        return response.json()['access_token'] #refresh token for 30 mins
-        #return response.json().get('access_token')
+        tokens = response.json()
+        return tokens['access_token'], tokens['refresh_token']
     except requests.RequestException as e:
         print(f"Error connecting to Keycloak: {e}")
-        return None
+        return None, None
+
+
+def refresh_access_token(config, refresh_token):
+    """
+    Refresh the access token using the refresh token.
+
+    :param config: PluginConfig object with Keycloak settings
+    :param refresh_token: The current refresh token
+    :return: New access token and refresh token, or (None, None) on failure
+    """
+    data = {
+        'grant_type': 'refresh_token',
+        'client_id': config.keycloak_client_id,
+        'client_secret': config.keycloak_client_secret,
+        'refresh_token': refresh_token
+    }
+
+    try:
+        response = requests.post(config.keycloak_token_url, data=data)
+        response.raise_for_status()
+        tokens = response.json()
+        return tokens['access_token'], tokens.get('refresh_token', refresh_token)  # Update if a new refresh_token is issued
+    except requests.RequestException as e:
+        print(f"Error refreshing access token: {e}")
+        return None, None
+
 
 def send_data_to_metacat(config, access_token, data):
     """
@@ -109,10 +136,12 @@ def send_data_to_metacat(config, access_token, data):
     }
 
     try:
+       
         response = requests.post(f"{config.metacat_url}/api/v1/datasets", json=data, headers=headers, params=params)
-        response.raise_for_status()
-        print("Data successfully sent to Metacat.")
         print(response)
+        response.raise_for_status()
+        print(response.json())
+        print("Data successfully sent to Metacat.")
         return response.json()
     except requests.RequestException as e:
         print(f"Error sending data to Metacat: {str(e)}")
@@ -140,6 +169,7 @@ def load_json_to_dict(file_path):
 def main():
     """
     Main function to orchestrate argument parsing, Keycloak connection, and data submission to Metacat.
+    Retries data submission up to 5 times if connection fails.
     """
     try:
         args = parse_arguments()
@@ -147,19 +177,35 @@ def main():
         config = PluginConfig(env, args.input, args.schema)
 
         data = load_json_to_dict(config.input_file)
+        print(data)
         if data is None:
             print("Failed to load input data, aborting.")
             return
-
         access_token = connect_to_keycloak(config)
         if access_token:
             print("Successfully authenticated with Keycloak.")
-            send_data_to_metacat(config, access_token, data)
+
+            max_retries = 5
+            retry_delay = 3  # seconds between retries
+
+            for attempt in range(1, max_retries + 1):
+                try:
+                    send_data_to_metacat(config, access_token, data)
+                    print("Data successfully sent to Metacat.")
+                    break  # Exit loop if data is sent successfully
+                except Exception as e:
+                    print(f"Attempt {attempt} failed: {e}")
+                    if attempt == max_retries:
+                        print("Max retries reached. Data submission aborted.")
+                    else:
+                        print(f"Retrying in {retry_delay} seconds...")
+                        time.sleep(retry_delay)
         else:
             print("Authentication failed. Data submission aborted.")
     except Exception as e:
         print(f"An unexpected error occurred in the main process: {e}")
         raise
+
 
 if __name__ == "__main__":
     #python3 main.py --config <path_to_config_file> --input <path_to_input_file> 
